@@ -10,7 +10,7 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
 %   Last Modified By:
 %       Edward Carney
 %   Last Modification Date:
-%       25 Nov 2018
+%       28 Nov 2018
 %
 %   Takes seven arguments:
 %       LandingStrip: the desired landing strip input as a LandingStrip
@@ -65,7 +65,7 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     % a 180 degree turn from current heading if necessary. Note here that
     % the startPoint is the current UAV position.
     angleDiffFromStraight = 180 - minAngle;
-    minNumDeltas = ceil(90 / angleDiffFromStraight);
+    minNumDeltas = ceil(90 / angleDiffFromStraight) + 4;
     if startPoint.east - minNumDeltas * delta < minE
         minFreespaceE = startPoint.east - minNumDeltas * delta;
     else
@@ -155,6 +155,8 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     % Initialize variable for total path distance.
     totalDistance = 0.0;
 
+    disp('Route planning algo started.')
+    
     %% Begin iterating.
     for iteration = 1:numIterations
         % Initialize trigger and switch variables to determine when path has been
@@ -184,11 +186,12 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
             end
 
             % Do not want to extend past point.
-            if distance < delta
-                extendDistance = distance;
-            else
-                extendDistance = delta;
-            end
+            extendDistance = delta;
+%             if distance < delta
+%                 extendDistance = distance;
+%             else
+%                 extendDistance = delta;
+%             end
 
             % Extend out by set distance
             newEast  = closestNode.east + ((newRandPoint.east - closestNode.east) / distance) * extendDistance;
@@ -209,12 +212,19 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
 
             if ~startOrStop
 
+                % Variable showing whether a point has been added or not
+                % for this iteration; defaults to false and goes to true if
+                % a point is added.
+                
+                pointAdded = false;
+                
                 % Add point to the correct branch if the closest node is the
                 % final node of an existing branch.            
                 % If no branches are created yet, create a new one with the
                 % provided points.
                 if length(Branches_start) == 0
                     Branches_start = [Branch([closestNode, newPoint])];
+                    pointAdded = true;
 
                 % Otherwise, check if the closest node is the final point on an
                 % existing branch; if it is, you can add the new point as the
@@ -222,8 +232,10 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 elseif length(Branches_start(branchInd).waypoints) == pointInd
                     if length(Branches_start(branchInd).segments) == 0
                         Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
+                        pointAdded = true;
                     elseif angleCheck(newSegment, Branches_start(branchInd).segments(end), minAngle)
                         Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
+                        pointAdded = true;
                     end
 
                 % Otherwise, the closest node must be a body point of an
@@ -233,104 +245,149 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 else
                     if pointInd == 1
                         Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
+                        pointAdded = true;
                     elseif angleCheck(newSegment, Branches_start(branchInd).segments(pointInd - 1), minAngle)
                         Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
+                        pointAdded = true;
                     end
                 end
 
                 % If +1 points exist in opposing array, check new segment to
                 % see if it intersects any segment in opposing array. If it
                 % does, get intersection, add new point to both arrays, and
-                % claim success.
+                % claim success. Only do this check if a point has been
+                % added for this iteration.
 
-                for i = 1:length(Branches_stop)
-                    for j = 2:length(Branches_stop(i).waypoints)
-                        if newSegment.doIntersect(Branches_stop(i).segments(j-1)) && angleCheck(LineSegment(newSegment.stopPoint, newSegment.startPoint), Branches_stop(i).segments(j-1), minAngle)
-                            [finalEast, finalNorth] = newSegment.getIntersection(Branches_stop(i).segments(j-1));
-                            finalPoint = Waypoint(finalNorth, finalEast, 0.0, 1, referencePoint);
-                            % Trim intersected branch to point of intersection.
-                            finalStopBranch = Branch(Branches_stop(i).waypoints(1:j));
-                            finalStopBranch = finalStopBranch.removeLastWaypoint();
-                            finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
-                            % Remove last waypoint of intersecting branch and
-                            % add new final waypoint.
-                            finalStartBranch = Branches_start(branchInd);
-                            finalStartBranch = finalStartBranch.removeLastWaypoint();
-                            finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
-                            pathCreated = true;
-                        end
+                if pointAdded
+                    
+                    [goodIntersect, checkPoint, interBranchInd, interWaypointInd] = checkBranchIntersect(Branches_stop, newSegment, referencePoint, minAngle);
+
+                    if goodIntersect
+                        finalPoint = checkPoint;
+                        % Trim intersected branch to point of intersection.
+                        finalStopBranch = Branch(Branches_stop(interBranchInd).waypoints(1:interWaypointInd));
+                        finalStopBranch = finalStopBranch.removeLastWaypoint();
+                        finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+                        % Remove last waypoint of intersecting branch and
+                        % add new final waypoint.
+                        finalStartBranch = Branches_start(branchInd);
+                        finalStartBranch = finalStartBranch.removeLastWaypoint();
+                        finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+                        pathCreated = true;
                     end
                 end
+                
+% %                 for i = 1:length(Branches_stop)
+% %                     for j = 2:length(Branches_stop(i).waypoints)
+% %                         if newSegment.doIntersect(Branches_stop(i).segments(j-1))
+% %                             % If intersecting segments can be found, check
+% %                             % if the resulting trimmed segments meet the
+% %                             % minimum angle requirement
+% %                             [checkEast, checkNorth] = newSegment.getIntersection(Branches_stop(i).segments(j-1));
+% %                             checkPoint = Waypoint(checkNorth, checkEast, 0.0, 1, referencePoint);
+% %                             newSegment_Trimmed = LineSegment(checkPoint, newSegment.startPoint);
+% %                             existingSegment_Trimmed = LineSegment(Branches_stop(i).segments(j-1).startPoint, checkPoint);
+% %                             if angleCheck(newSegment_Trimmed, existingSegment_Trimmed, minAngle)
+% %                                 finalPoint = checkPoint;
+% %                                 % Trim intersected branch to point of intersection.
+% %                                 finalStopBranch = Branch(Branches_stop(i).waypoints(1:j));
+% %                                 finalStopBranch = finalStopBranch.removeLastWaypoint();
+% %                                 finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+% %                                 % Remove last waypoint of intersecting branch and
+% %                                 % add new final waypoint.
+% %                                 finalStartBranch = Branches_start(branchInd);
+% %                                 finalStartBranch = finalStartBranch.removeLastWaypoint();
+% %                                 finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+% %                                 pathCreated = true;
+% %                             end
+% %                         end
+% %                     end
+% %                 end
 
                 %% 
+                
                 % If path still not complete, grow opposing tree in the same
                 % direction. Will use similar process as above.
+                if pathCreated == false
+                    
+                    [closestNode, branchInd, pointInd, distance] = newRandPoint.findClosestBranchPoint(Branches_stop);
 
-                [closestNode, branchInd, pointInd, distance] = newRandPoint.findClosestBranchPoint(Branches_stop);
-
-                % Do not want to extend past point.
-                if distance < delta
-                    extendDistance = distance;
-                else
+                    % Do not want to extend past point.
                     extendDistance = delta;
-                end
+%                     if distance < delta
+%                         extendDistance = distance;
+%                     else
+%                         extendDistance = delta;
+%                     end
 
-                % Extend out by set distance
-                newEast  = closestNode.east + ((newRandPoint.east - closestNode.east) / distance) * extendDistance;
-                newNorth = closestNode.north + ((newRandPoint.north - closestNode.north) / distance) * extendDistance;
+                    % Extend out by set distance
+                    newEast  = closestNode.east + ((newRandPoint.east - closestNode.east) / distance) * extendDistance;
+                    newNorth = closestNode.north + ((newRandPoint.north - closestNode.north) / distance) * extendDistance;
 
-                % Create new waypoint and check if new point is a valid point in
-                % the freespace. Add point to appropriate waypoint array if it is
-                % valid and check if a complete path has been forged.
-                newPoint = Waypoint(newNorth, newEast, 0.0, 1, referencePoint);
-                if ~validPoint(newPoint, closestNode, badWaypoints)
-                    continue
-                end
-
-                % Create new line segment to test for path completion.
-                newSegment = LineSegment(closestNode, newPoint);
-
-                % Add point to the correct branch if the closest node is the
-                % final node of an existing branch.            
-                % If no branches are created yet, create a new one with the
-                % provided points.
-                if length(Branches_stop) == 0
-                    Branches_stop = [Branch([closestNode, newPoint])];
-
-                % Otherwise, check if the closest node is the final point on an
-                % existing branch; if it is, you can add the new point as the
-                % final point for that branch.
-                elseif length(Branches_stop(branchInd).waypoints) == pointInd
-                    if length(Branches_stop(branchInd).segments) == 0
-                        Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
-                    elseif angleCheck(newSegment, Branches_stop(branchInd).segments(end), minAngle)
-                        Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
+                    % Create new waypoint and check if new point is a valid point in
+                    % the freespace. Add point to appropriate waypoint array if it is
+                    % valid and check if a complete path has been forged.
+                    newPoint = Waypoint(newNorth, newEast, 0.0, 1, referencePoint);
+                    if ~validPoint(newPoint, closestNode, badWaypoints)
+                        continue
                     end
 
-                % Otherwise, the closest node must be a body point of an
-                % existing branch, in which case it would create a new branch
-                % from the points up to and including the closest node, with
-                % the new point as the final point.
-                else
-                    if pointInd == 1
-                        Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
-                    elseif angleCheck(newSegment, Branches_stop(branchInd).segments(pointInd - 1), minAngle)
-                        Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
+                    % Create new line segment to test for path completion.
+                    newSegment = LineSegment(closestNode, newPoint);
+
+                    % Variable showing whether a point has been added or not
+                    % for this iteration; defaults to false and goes to true if
+                    % a point is added.
+
+                    pointAdded = false;
+
+                    % Add point to the correct branch if the closest node is the
+                    % final node of an existing branch.            
+                    % If no branches are created yet, create a new one with the
+                    % provided points.
+                    if length(Branches_stop) == 0
+                        Branches_stop = [Branch([closestNode, newPoint])];
+                        pointAdded = true;
+
+                    % Otherwise, check if the closest node is the final point on an
+                    % existing branch; if it is, you can add the new point as the
+                    % final point for that branch.
+                    elseif length(Branches_stop(branchInd).waypoints) == pointInd
+                        if length(Branches_stop(branchInd).segments) == 0
+                            Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
+                            pointAdded = true;
+                        elseif angleCheck(newSegment, Branches_stop(branchInd).segments(end), minAngle)
+                            Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
+                            pointAdded = true;
+                        end
+
+                    % Otherwise, the closest node must be a body point of an
+                    % existing branch, in which case it would create a new branch
+                    % from the points up to and including the closest node, with
+                    % the new point as the final point.
+                    else
+                        if pointInd == 1
+                            Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
+                            pointAdded = true;
+                        elseif angleCheck(newSegment, Branches_stop(branchInd).segments(pointInd - 1), minAngle)
+                            Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
+                            pointAdded = true;
+                        end
                     end
-                end
 
-                % If +1 points exist in opposing array, check new segment to
-                % see if it intersects any segment in opposing array. If it
-                % does, get intersection, add new point to both arrays, and
-                % claim success.
+                    % If +1 points exist in opposing array, check new segment to
+                    % see if it intersects any segment in opposing array. If it
+                    % does, get intersection, add new point to both arrays, and
+                    % claim success.
 
-                for i = 1:length(Branches_start)
-                    for j = 2:length(Branches_start(i).waypoints)
-                        if newSegment.doIntersect(Branches_start(i).segments(j-1)) && angleCheck(LineSegment(newSegment.stopPoint, newSegment.startPoint), Branches_start(i).segments(j-1), minAngle)
-                            [finalEast, finalNorth] = newSegment.getIntersection(Branches_start(i).segments(j-1));
-                            finalPoint = Waypoint(finalNorth, finalEast, 0.0, 1, referencePoint);
+                    if pointAdded
+
+                        [goodIntersect, checkPoint, interBranchInd, interWaypointInd] = checkBranchIntersect(Branches_start, newSegment, referencePoint, minAngle);
+
+                        if goodIntersect
+                            finalPoint = checkPoint;
                             % Trim intersected branch to point of intersection.
-                            finalStartBranch = Branch(Branches_start(i).waypoints(1:j));
+                            finalStartBranch = Branch(Branches_start(interBranchInd).waypoints(1:interWaypointInd));
                             finalStartBranch = finalStartBranch.removeLastWaypoint();
                             finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
                             % Remove last waypoint of intersecting branch and
@@ -341,10 +398,42 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                             pathCreated = true;
                         end
                     end
-                end
 
+    % %                 for i = 1:length(Branches_start)
+    % %                     for j = 2:length(Branches_start(i).waypoints)
+    % %                         if newSegment.doIntersect(Branches_start(i).segments(j-1))
+    % %                             % If intersecting segments can be found, check
+    % %                             % if the resulting trimmed segments meet the
+    % %                             % minimum angle requirement
+    % %                             [checkEast, checkNorth] = newSegment.getIntersection(Branches_start(i).segments(j-1));
+    % %                             checkPoint = Waypoint(checkNorth, checkEast, 0.0, 1, referencePoint);
+    % %                             newSegment_Trimmed = LineSegment(checkPoint, newSegment.startPoint);
+    % %                             existingSegment_Trimmed = LineSegment(Branches_start(i).segments(j-1).startPoint, checkPoint);
+    % %                             if angleCheck(newSegment_Trimmed, existingSegment_Trimmed, minAngle)
+    % %                                 finalPoint = checkPoint;
+    % %                                 % Trim intersected branch to point of intersection.
+    % %                                 finalStartBranch = Branch(Branches_start(i).waypoints(1:j));
+    % %                                 finalStartBranch = finalStartBranch.removeLastWaypoint();
+    % %                                 finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+    % %                                 % Remove last waypoint of intersecting branch and
+    % %                                 % add new final waypoint.
+    % %                                 finalStopBranch = Branches_stop(branchInd);
+    % %                                 finalStopBranch = finalStopBranch.removeLastWaypoint();
+    % %                                 finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+    % %                                 pathCreated = true;
+    % %                             end
+    % %                         end
+    % %                     end
+    % %                 end
+                end
             elseif startOrStop
                 % Add point to waypoint array
+                
+                % Variable showing whether a point has been added or not
+                % for this iteration; defaults to false and goes to true if
+                % a point is added.
+                
+                pointAdded = false;
 
                 % Add point to the correct branch if the closest node is the
                 % final node of an existing branch.            
@@ -352,6 +441,7 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 % provided points.
                 if length(Branches_stop) == 0
                     Branches_stop = [Branch([closestNode, newPoint])];
+                    pointAdded = true;
 
                 % Otherwise, check if the closest node is the final point on an
                 % existing branch; if it is, you can add the new point as the
@@ -359,8 +449,10 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 elseif length(Branches_stop(branchInd).waypoints) == pointInd
                     if length(Branches_stop(branchInd).segments) == 0
                         Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
+                        pointAdded = true;
                     elseif angleCheck(newSegment, Branches_stop(branchInd).segments(end), minAngle)
                         Branches_stop(branchInd) = Branches_stop(branchInd).addWaypoint(newPoint);
+                        pointAdded = true;
                     end
 
                 % Otherwise, the closest node must be a body point of an
@@ -370,8 +462,10 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 else
                     if pointInd == 1
                         Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
+                        pointAdded = true;
                     elseif angleCheck(newSegment, Branches_stop(branchInd).segments(pointInd - 1), minAngle)
                         Branches_stop = [Branches_stop, Branch([Branches_stop(branchInd).waypoints(1:pointInd), newPoint])];
+                        pointAdded = true;
                     end
                 end
 
@@ -379,95 +473,137 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                 % see if it intersects any segment in opposing array. If it
                 % does, get intersection, add new point to both arrays, and
                 % claim success.
+                
+                if pointAdded
+                
+                    [goodIntersect, checkPoint, interBranchInd, interWaypointInd] = checkBranchIntersect(Branches_start, newSegment, referencePoint, minAngle);
 
-                for i = 1:length(Branches_start)
-                    for j = 2:length(Branches_start(i).waypoints)
-                        if newSegment.doIntersect(Branches_start(i).segments(j-1)) && angleCheck(LineSegment(newSegment.stopPoint, newSegment.startPoint), Branches_start(i).segments(j-1), minAngle)
-                            [finalEast, finalNorth] = newSegment.getIntersection(Branches_start(i).segments(j-1));
-                            finalPoint = Waypoint(finalNorth, finalEast, 0.0, 1, referencePoint);
-                            % Trim intersected branch to point of intersection.
-                            finalStartBranch = Branch(Branches_start(i).waypoints(1:j));
-                            finalStartBranch = finalStartBranch.removeLastWaypoint();
-                            finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
-                            % Remove last waypoint of intersecting branch and
-                            % add new final waypoint.
-                            finalStopBranch = Branches_stop(branchInd);
-                            finalStopBranch = finalStopBranch.removeLastWaypoint();
-                            finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
-                            pathCreated = true;
-                        end
+                    if goodIntersect   
+                        finalPoint = checkPoint;
+                        % Trim intersected branch to point of intersection.
+                        finalStartBranch = Branch(Branches_start(interBranchInd).waypoints(1:interWaypointInd));
+                        finalStartBranch = finalStartBranch.removeLastWaypoint();
+                        finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+                        % Remove last waypoint of intersecting branch and
+                        % add new final waypoint.
+                        finalStopBranch = Branches_stop(branchInd);
+                        finalStopBranch = finalStopBranch.removeLastWaypoint();
+                        finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+                        pathCreated = true;
                     end
                 end
+
+% %                 for i = 1:length(Branches_start)
+% %                     for j = 2:length(Branches_start(i).waypoints)
+% %                         if newSegment.doIntersect(Branches_start(i).segments(j-1))
+% %                             % If intersecting segments can be found, check
+% %                             % if the resulting trimmed segments meet the
+% %                             % minimum angle requirement
+% %                             [checkEast, checkNorth] = newSegment.getIntersection(Branches_start(i).segments(j-1));
+% %                             checkPoint = Waypoint(checkNorth, checkEast, 0.0, 1, referencePoint);
+% %                             newSegment_Trimmed = LineSegment(checkPoint, newSegment.startPoint);
+% %                             existingSegment_Trimmed = LineSegment(Branches_start(i).segments(j-1).startPoint, checkPoint);
+% %                             if angleCheck(newSegment_Trimmed, existingSegment_Trimmed, minAngle)
+% %                                 finalPoint = checkPoint;
+% %                                 % Trim intersected branch to point of intersection.
+% %                                 finalStartBranch = Branch(Branches_start(i).waypoints(1:j));
+% %                                 finalStartBranch = finalStartBranch.removeLastWaypoint();
+% %                                 finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+% %                                 % Remove last waypoint of intersecting branch and
+% %                                 % add new final waypoint.
+% %                                 finalStopBranch = Branches_stop(branchInd);
+% %                                 finalStopBranch = finalStopBranch.removeLastWaypoint();
+% %                                 finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+% %                                 pathCreated = true;
+% %                             end
+% %                         end
+% %                     end
+% %                 end
 
                 %% 
                 % If path still not complete, grow opposing tree in the same
                 % direction. Will use similar process as above.
 
-                [closestNode, branchInd, pointInd, distance] = newRandPoint.findClosestBranchPoint(Branches_start);
+                if pathCreated == false
 
-                % Do not want to extend past point.
-                if distance < delta
-                    extendDistance = distance;
-                else
+                    [closestNode, branchInd, pointInd, distance] = newRandPoint.findClosestBranchPoint(Branches_start);
+
+                    % Do not want to extend past point.
                     extendDistance = delta;
-                end
+%                     if distance < delta
+%                         extendDistance = distance;
+%                     else
+%                         extendDistance = delta;
+%                     end
 
-                % Extend out by set distance
-                newEast  = closestNode.east + ((newRandPoint.east - closestNode.east) / distance) * extendDistance;
-                newNorth = closestNode.north + ((newRandPoint.north - closestNode.north) / distance) * extendDistance;
+                    % Extend out by set distance
+                    newEast  = closestNode.east + ((newRandPoint.east - closestNode.east) / distance) * extendDistance;
+                    newNorth = closestNode.north + ((newRandPoint.north - closestNode.north) / distance) * extendDistance;
 
-                % Create new waypoint and check if new point is a valid point in
-                % the freespace. Add point to appropriate waypoint array if it is
-                % valid and check if a complete path has been forged.
-                newPoint = Waypoint(newNorth, newEast, 0.0, 1, referencePoint);
-                if ~validPoint(newPoint, closestNode, badWaypoints)
-                    continue
-                end
-
-                % Create new line segment to test for path completion.
-                newSegment = LineSegment(closestNode, newPoint);
-
-                % Add point to the correct branch if the closest node is the
-                % final node of an existing branch.            
-                % If no branches are created yet, create a new one with the
-                % provided points.
-                if length(Branches_start) == 0
-                    Branches_start = [Branch([closestNode, newPoint])];
-
-                % Otherwise, check if the closest node is the final point on an
-                % existing branch; if it is, you can add the new point as the
-                % final point for that branch.
-                elseif length(Branches_start(branchInd).waypoints) == pointInd
-                    if length(Branches_start(branchInd).segments) == 0
-                        Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
-                    elseif angleCheck(newSegment, Branches_start(branchInd).segments(end), minAngle)
-                        Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
+                    % Create new waypoint and check if new point is a valid point in
+                    % the freespace. Add point to appropriate waypoint array if it is
+                    % valid and check if a complete path has been forged.
+                    newPoint = Waypoint(newNorth, newEast, 0.0, 1, referencePoint);
+                    if ~validPoint(newPoint, closestNode, badWaypoints)
+                        continue
                     end
 
-                % Otherwise, the closest node must be a body point of an
-                % existing branch, in which case it would create a new branch
-                % from the points up to and including the closest node, with
-                % the new point as the final point.
-                else
-                    if pointInd == 1
-                        Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
-                    elseif angleCheck(newSegment, Branches_start(branchInd).segments(pointInd - 1), minAngle)
-                        Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
+                    % Create new line segment to test for path completion.
+                    newSegment = LineSegment(closestNode, newPoint);
+
+                    % Variable showing whether a point has been added or not
+                    % for this iteration; defaults to false and goes to true if
+                    % a point is added.
+
+                    pointAdded = false;
+
+                    % Add point to the correct branch if the closest node is the
+                    % final node of an existing branch.            
+                    % If no branches are created yet, create a new one with the
+                    % provided points.
+                    if length(Branches_start) == 0
+                        Branches_start = [Branch([closestNode, newPoint])];
+                        pointAdded = true;
+
+                    % Otherwise, check if the closest node is the final point on an
+                    % existing branch; if it is, you can add the new point as the
+                    % final point for that branch.
+                    elseif length(Branches_start(branchInd).waypoints) == pointInd
+                        if length(Branches_start(branchInd).segments) == 0
+                            Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
+                            pointAdded = true;
+                        elseif angleCheck(newSegment, Branches_start(branchInd).segments(end), minAngle)
+                            Branches_start(branchInd) = Branches_start(branchInd).addWaypoint(newPoint);
+                            pointAdded = true;
+                        end
+
+                    % Otherwise, the closest node must be a body point of an
+                    % existing branch, in which case it would create a new branch
+                    % from the points up to and including the closest node, with
+                    % the new point as the final point.
+                    else
+                        if pointInd == 1
+                            Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
+                            pointAdded = true;
+                        elseif angleCheck(newSegment, Branches_start(branchInd).segments(pointInd - 1), minAngle)
+                            Branches_start = [Branches_start, Branch([Branches_start(branchInd).waypoints(1:pointInd), newPoint])];
+                            pointAdded = true;
+                        end
                     end
-                end
 
-                % If +1 points exist in opposing array, check new segment to
-                % see if it intersects any segment in opposing array. If it
-                % does, get intersection, add new point to both arrays, and
-                % claim success.
+                    % If +1 points exist in opposing array, check new segment to
+                    % see if it intersects any segment in opposing array. If it
+                    % does, get intersection, add new point to both arrays, and
+                    % claim success.
 
-                for i = 1:length(Branches_stop)
-                    for j = 2:length(Branches_stop(i).waypoints)
-                        if newSegment.doIntersect(Branches_stop(i).segments(j-1)) && angleCheck(LineSegment(newSegment.stopPoint, newSegment.startPoint), Branches_stop(i).segments(j-1), minAngle)
-                            [finalEast, finalNorth] = newSegment.getIntersection(Branches_stop(i).segments(j-1));
-                            finalPoint = Waypoint(finalNorth, finalEast, 0.0, 1, referencePoint);
+                    if pointAdded
+
+                        [goodIntersect, checkPoint, interBranchInd, interWaypointInd] = checkBranchIntersect(Branches_stop, newSegment, referencePoint, minAngle);
+
+                        if goodIntersect
+                            finalPoint = checkPoint;
                             % Trim intersected branch to point of intersection.
-                            finalStopBranch = Branch(Branches_stop(i).waypoints(1:j));
+                            finalStopBranch = Branch(Branches_stop(interBranchInd).waypoints(1:interWaypointInd));
                             finalStopBranch = finalStopBranch.removeLastWaypoint();
                             finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
                             % Remove last waypoint of intersecting branch and
@@ -478,26 +614,100 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
                             pathCreated = true;
                         end
                     end
-                end
 
+    % %                 for i = 1:length(Branches_stop)
+    % %                     for j = 2:length(Branches_stop(i).waypoints)
+    % %                         if newSegment.doIntersect(Branches_stop(i).segments(j-1))
+    % %                             % If intersecting segments can be found, check
+    % %                             % if the resulting trimmed segments meet the
+    % %                             % minimum angle requirement
+    % %                             [checkEast, checkNorth] = newSegment.getIntersection(Branches_stop(i).segments(j-1));
+    % %                             checkPoint = Waypoint(checkNorth, checkEast, 0.0, 1, referencePoint);
+    % %                             newSegment_Trimmed = LineSegment(checkPoint, newSegment.startPoint);
+    % %                             existingSegment_Trimmed = LineSegment(Branches_stop(i).segments(j-1).startPoint, checkPoint);
+    % %                             if angleCheck(newSegment_Trimmed, existingSegment_Trimmed, minAngle)
+    % %                                 finalPoint = checkPoint;
+    % %                                 % Trim intersected branch to point of intersection.
+    % %                                 finalStopBranch = Branch(Branches_stop(i).waypoints(1:j));
+    % %                                 finalStopBranch = finalStopBranch.removeLastWaypoint();
+    % %                                 finalStopBranch = finalStopBranch.addWaypoint(finalPoint);
+    % %                                 % Remove last waypoint of intersecting branch and
+    % %                                 % add new final waypoint.
+    % %                                 finalStartBranch = Branches_start(branchInd);
+    % %                                 finalStartBranch = finalStartBranch.removeLastWaypoint();
+    % %                                 finalStartBranch = finalStartBranch.addWaypoint(finalPoint);
+    % %                                 pathCreated = true;
+    % %                             end
+    % %                         end
+    % %                     end
+    % %                 end
+
+                end
             end
 
             % Flip startOrStop boolean.
             startOrStop = not(startOrStop);
+            pointAdded = false;
 
         end
 
         % Generate final output products and check if they are better than
         % prior runs.
-        newTotalDistance = finalStartBranch.distance + finalStopBranch.distance;
+        
+        %newTotalDistance = finalStartBranch.distance + finalStopBranch.distance;
+        
         newWaypoints = [finalStartBranch.waypoints];
         for j = length(finalStopBranch.waypoints)-1:-1:1
             newWaypoints = [newWaypoints finalStopBranch.waypoints(j)];
         end
 
+        % Perform a simple one-time pruning on the selected points
+        if length(newWaypoints) > 4
+            reducedWaypoints = [newWaypoints(1)];
+            pointInd = 3;
+            startInd = 1;
+            newStartInd = 1;
+            startNode = newWaypoints(startInd);
+            while pointInd < length(newWaypoints)
+                if startInd == 1
+                    while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
+                            angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                            pointInd < (length(newWaypoints) - 1)
+                            pointInd = pointInd + 1;
+                    end
+                    reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
+                    startInd = pointInd - 1;
+                    pointInd = pointInd + 1;
+                    newStartInd = newStartInd + 1;
+                else
+                    while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
+                            angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                            angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                            pointInd < (length(newWaypoints) - 1)
+                            pointInd = pointInd + 1;
+                    end
+                    reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
+                    startInd = pointInd - 1;
+                    pointInd = pointInd + 1;
+                    newStartInd = newStartInd + 1;
+                end
+            end
+            if validPoint(newWaypoints(startInd), newWaypoints(end), badWaypoints) && ...
+                            angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(end)), minAngle)
+                reducedWaypoints = [reducedWaypoints, newWaypoints(end)];
+            else
+                reducedWaypoints = [reducedWaypoints, newWaypoints(end - 1), newWaypoints(end)];
+            end
+        end
+        
+        newTotalDistance = 0.0;
+        for j = 2:length(reducedWaypoints)
+            newTotalDistance = newTotalDistance + LineSegment(reducedWaypoints(j - 1), reducedWaypoints(j)).distance;
+        end
+        
         if newTotalDistance < totalDistance || iteration == 1
             totalDistance = newTotalDistance;
-            Waypoints = newWaypoints;
+            Waypoints = reducedWaypoints;
         end
         
         % Display progress text
@@ -505,22 +715,6 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
         statusText = ['Algo ', num2str(donePercent), '% complete.'];
         disp(statusText)
     end
-    
-    % Perform a simple one-time pruning on the selected points
-    newWaypoints = [Waypoints(1)];
-    pointInd = 3;
-    startNode = Waypoints(1);
-    while pointInd < length(Waypoints);
-        while validPoint(startNode, Waypoints(pointInd), badWaypoints) && ...
-                angleCheck(LineSegment(startNode, Waypoints(pointInd)), LineSegment(Waypoints(pointInd), Waypoints(pointInd + 1)), minAngle) &&...
-                pointInd < (length(Waypoints) - 1)
-                pointInd = pointInd + 1;
-        end
-        newWaypoints = [newWaypoints, Waypoints(pointInd - 1)];
-        startNode = Waypoints(pointInd - 1);
-        pointInd = pointInd + 1;
-    end
-    newWaypoints = [newWaypoints, Waypoints(end)];
     
     % Plot new full path.
     figure(2)
@@ -560,6 +754,13 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
         freespace(1,1) = freespace(1,1) - axesDelta;
     end
     axis([freespace(1,1) freespace(1,2) freespace(2,1) freespace(2,2)])
+    
+    h = zeros(4, 1);
+    h(1) = plot(NaN,NaN,'--xk');
+    h(2) = plot(NaN,NaN,'--r');
+    h(3) = plot(NaN,NaN,'^b');
+    h(4) = plot(NaN,NaN,'xg');
+    legend(h, 'Planned Path','Restricted Regions','UAV Current Position','Landing Strip Center', 'Location', 'best');
     
     % Plot informational text
     text1 = ['Delta Distance: ', num2str(delta), ' m'];
@@ -610,6 +811,13 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     end
     axis([freespace(1,1) freespace(1,2) freespace(2,1) freespace(2,2)])
     
+    h = zeros(4, 1);
+    h(1) = plot(NaN,NaN,'--xk');
+    h(2) = plot(NaN,NaN,'--r');
+    h(3) = plot(NaN,NaN,'^b');
+    h(4) = plot(NaN,NaN,'xg');
+    legend(h, 'Planned Path','Restricted Regions','UAV Current Position','Landing Strip Center', 'Location', 'best');
+    
     % Plot informational text
     text1 = ['Delta Distance: ', num2str(delta), ' m'];
     text2 = ['Minimum Turn Angle: ', num2str(minAngle), ' deg'];
@@ -619,6 +827,7 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     text(freespace(1,1) + 50,freespace(2,1) + 400,plotText)
     hold off
     
+    Waypoints = newWaypoints;
     
     % Revert all longitudes
     for i = 1:length(Waypoints)

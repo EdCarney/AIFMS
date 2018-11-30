@@ -32,12 +32,23 @@ classdef LandingStrip
     
     % Will define all weightings as constant properties.
     properties (Constant)
-        W_avgTri = -15; % Weighting for average ruggedness (lower values preferred)
-        W_avgDem = -15; % Weighting for average elevation (lower altitude is preferred)
+        
+%         % Strip Quality Configuration
+%         W_avgTri = -15; % Weighting for average ruggedness (lower values preferred)
+%         W_avgDem = -15; % Weighting for average elevation (lower altitude is preferred)
+%         W_LcType = -50; % Weighting for land cover type (prefer bare earth, vegetation, and farm land in that order)
+%         W_maxDiffDEM = -15; % Weighting for max elevation difference from average (lower values preferred)
+%         W_distFromOtherStrips = -0.01; % Weighting for proximity to other strips (higher values preferred)
+%         W_distFromUAV = -0.1; % Weighting for ditance to UAV (lower values preferred)
+
+%         % Strip Proximity Configuration
+        W_avgTri = -10; % Weighting for average ruggedness (lower values preferred)
+        W_avgDem = -10; % Weighting for average elevation (lower altitude is preferred)
         W_LcType = -50; % Weighting for land cover type (prefer bare earth, vegetation, and farm land in that order)
-        W_maxDiffDEM = -15; % Weighting for max elevation difference from average (lower values preferred)
-        W_distFromOtherStrips = -0.01; % Weighting for proximity to other strips (higher values preferred)
-        W_distFromUAV = -0.1; % Weighting for ditance to UAV (lower values preferred)
+        W_maxDiffDEM = -10; % Weighting for max elevation difference from average (lower values preferred)
+        W_distFromOtherStrips = -10; % Weighting for proximity to other strips (higher values preferred)
+        W_distFromUAV = -5; % Weighting for ditance to UAV (lower values preferred)
+
     end
         
     
