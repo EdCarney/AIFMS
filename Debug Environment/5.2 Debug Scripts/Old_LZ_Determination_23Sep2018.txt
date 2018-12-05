@@ -1,0 +1,187 @@
+    %% LZ Determination
+  
+% % %     % Set minimum and maximum latitude and longitude values based on N_FGIF
+% % %     minLon = min(min(N_FGIF_filt(:,:,2)));
+% % %     maxLon = max(max(N_FGIF_filt(:,:,2)));
+% % %     minLat = min(min(N_FGIF_filt(:,:,3)));
+% % %     maxLat = max(max(N_FGIF_filt(:,:,3)));
+% % %     
+% % %     % Get corresponding indices for the DEM and TRI matrices
+% % %     [c minDemLonInd] = min(abs(DEM_filt(1,:,2)' - (minLon - d_deg)));
+% % %     [c maxDemLonInd] = min(abs(DEM_filt(1,:,2)' - (maxLon + d_deg)));
+% % %     [c minDemLatInd] = min(abs(DEM_filt(:,1,3) - (minLat - d_deg)));
+% % %     [c maxDemLatInd] = min(abs(DEM_filt(:,1,3) - (maxLat + d_deg)));
+% % %     
+% % %     [c minTriLonInd] = min(abs(TRI_filt(1,:,2)' - (minLon - d_deg)));
+% % %     [c maxTriLonInd] = min(abs(TRI_filt(1,:,2)' - (maxLon + d_deg)));
+% % %     [c minTriLatInd] = min(abs(TRI_filt(:,1,3) - (minLat - d_deg)));
+% % %     [c maxTriLatInd] = min(abs(TRI_filt(:,1,3) - (maxLat + d_deg)));
+% % %     
+% % %     [c minLcLonInd] = min(abs(LC_filt(1,:,2)' - (minLon - d_deg)));
+% % %     [c maxLcLonInd] = min(abs(LC_filt(1,:,2)' - (maxLon + d_deg)));
+% % %     [c minLcLatInd] = min(abs(LC_filt(:,1,3) - (minLat - d_deg)));
+% % %     [c maxLcLatInd] = min(abs(LC_filt(:,1,3) - (maxLat + d_deg)));
+% % %     
+% % %     % Set subsets of the DEM and TRI data to align with the FGIF and
+% % %     % initialize Xq and Yq for interpolations
+% % %     DEM_FGIF_filt = DEM_filt(maxDemLatInd:minDemLatInd,maxDemLonInd:minDemLonInd,:);
+% % %     TRI_FGIF_filt = TRI_filt(maxTriLatInd:minTriLatInd,maxTriLonInd:minTriLonInd,:);
+% % %     LC_FGIF_filt = LC_filt(maxLcLatInd:minLcLatInd,maxLcLonInd:minLcLonInd,:);
+% % %     LonArraySize = ceil(((maxLon - minLon)/d_deg));
+% % %     LatArraySize = ceil(((maxLat - minLat)/d_deg));
+% % %     LonArray = zeros(1,LonArraySize);
+% % %     LatArray = zeros(1,LatArraySize);
+% % %     for i = 1:LonArraySize
+% % %         LonArray(i) = maxLon - d_deg * (i - 1);
+% % %     end
+% % %     for i = 1:LatArraySize
+% % %         LatArray(i) = minLat + d_deg * (i - 1);
+% % %     end
+% % % %     LonArray = [maxLon:-d_deg:minLon];
+% % % %     LatArray = [minLat:d_deg:maxLat];
+% % %     [Xq,Yq] = meshgrid(LonArray,LatArray);
+% % %     
+% % %     % Use interp2 to align DEM data subset with LS data
+% % %         X_dem = DEM_FGIF_filt(:,:,2);
+% % %         Y_dem = DEM_FGIF_filt(:,:,3);
+% % %         V_dem = DEM_FGIF_filt(:,:,1);
+% % % 
+% % %         % Reorder Y and V matrices to align with N_FGIF
+% % %         Y_dem = flipud(Y_dem);
+% % %         V_dem = flipud(V_dem);
+% % %         Vq_dem = interp2(X_dem,Y_dem,V_dem,Xq,Yq,'linear');
+% % %     
+% % %     % Use interp2 to align TRI data subset with LS data
+% % %         X_tri = TRI_FGIF_filt(:,:,2);
+% % %         Y_tri = TRI_FGIF_filt(:,:,3);
+% % %         V_tri = TRI_FGIF_filt(:,:,1);
+% % % 
+% % %         % Reorder Y and V matrices to align with N_FGIF
+% % %         Y_tri = flipud(Y_tri);
+% % %         V_tri = flipud(V_tri);
+% % %         Vq_tri = interp2(X_tri,Y_tri,V_tri,Xq,Yq,'linear');
+% % %     
+% % %     % Use interp2 to align LC data subset with LS data
+% % %         X_lc = LC_FGIF_filt(:,:,2);
+% % %         Y_lc = LC_FGIF_filt(:,:,3);
+% % %         V_lc = LC_FGIF_filt(:,:,1);
+% % % 
+% % %         % Reorder Y and V matrices to align with N_FGIF
+% % %         Y_lc = flipud(Y_lc);
+% % %         V_lc = flipud(V_lc);
+% % %         Vq_lc = round(interp2(X_lc,Y_lc,V_lc,Xq,Yq,'linear'));
+% % %                 
+% % % %     figure(3)
+% % % %     surf(X_dem,Y_dem,V_dem);
+% % % %     figure(4)
+% % % %     surf(Xq,Yq,Vq_dem);
+% % % %     figure(5)
+% % % %     surf(X_tri,Y_tri,V_tri);
+% % % %     figure(6)
+% % % %     surf(Xq,Yq,Vq_tri);
+% % % %     figure(7)
+% % % %     surf(X_lc,Y_lc,V_lc);
+% % % %     figure(8)
+% % % %     surf(Xq,Yq,Vq_lc);
+% % %     
+% % %     master_matrix = cat(6,N_FGIF_filt(:,:,1),Vq_dem,Vq_tri,Vq_lc,Xq,Yq);
+% % %     
+% % %     toc()
+% % %     
+% % %     LZ_Calculation_FGIF(master_matrix, x_earth, y_earth, deg2met);
+    
+
+    % Set minimum and maximum latitude and longitude values based on N_FGIF
+    minLon = min(min(N_FGIF_filt(:,:,2)));
+    maxLon = max(max(N_FGIF_filt(:,:,2)));
+    minLat = min(min(N_FGIF_filt(:,:,3)));
+    maxLat = max(max(N_FGIF_filt(:,:,3)));
+    
+    % Get corresponding indices for the DEM and TRI matrices
+    
+    c = 0;
+    minLonInd = 0;
+    maxLonInd = 0;
+    minLatInd = 0;
+    maxLatInd = 0;
+    
+    [c minLonInd] = min(abs(Xq(1,:)' - minLon));
+    [c maxLonInd] = min(abs(Xq(1,:)' - maxLon));
+    [c minLatInd] = min(abs(Yq(:,1)  - minLat));
+    [c maxLatInd] = min(abs(Yq(:,1)  - maxLat));
+    
+%     minDemLonInd = 0;
+%     maxDemLonInd = 0;
+%     minDemLatInd = 0;
+%     maxDemLatInd = 0;
+%     
+%     minTriLonInd = 0;
+%     maxTriLonInd = 0;
+%     minTriLatInd = 0;
+%     maxTriLatInd = 0;
+%     
+%     minLcLonInd = 0;
+%     maxLcLonInd = 0;
+%     minLcLatInd = 0;
+%     maxLcLatInd = 0;
+%     
+%     [c minDemLonInd] = min(abs(DEM_filt(1,:,2)' - (minLon - d_deg)));
+%     [c maxDemLonInd] = min(abs(DEM_filt(1,:,2)' - (maxLon + d_deg)));
+%     [c minDemLatInd] = min(abs(DEM_filt(:,1,3) - (minLat - d_deg)));
+%     [c maxDemLatInd] = min(abs(DEM_filt(:,1,3) - (maxLat + d_deg)));
+%     
+%     [c minTriLonInd] = min(abs(TRI_filt(1,:,2)' - (minLon - d_deg)));
+%     [c maxTriLonInd] = min(abs(TRI_filt(1,:,2)' - (maxLon + d_deg)));
+%     [c minTriLatInd] = min(abs(TRI_filt(:,1,3) - (minLat - d_deg)));
+%     [c maxTriLatInd] = min(abs(TRI_filt(:,1,3) - (maxLat + d_deg)));
+%     
+%     [c minLcLonInd] = min(abs(LC_filt(1,:,2)' - (minLon - d_deg)));
+%     [c maxLcLonInd] = min(abs(LC_filt(1,:,2)' - (maxLon + d_deg)));
+%     [c minLcLatInd] = min(abs(LC_filt(:,1,3) - (minLat - d_deg)));
+%     [c maxLcLatInd] = min(abs(LC_filt(:,1,3) - (maxLat + d_deg)));
+    
+    % Set subsets of the DEM and TRI data to align with the FGIF and
+    % initialize Xq and Yq for interpolations
+    
+    DEM_FGIF_filt = DEM_filt(minLatInd:maxLatInd,maxLonInd:minLonInd);
+    TRI_FGIF_filt = TRI_filt(minLatInd:maxLatInd,maxLonInd:minLonInd);
+    LC_FGIF_filt = LC_filt(minLatInd:maxLatInd,maxLonInd:minLonInd);
+    Xq_FGIF = Xq(minLatInd:maxLatInd,maxLonInd:minLonInd);
+    Yq_FGIF = Yq(minLatInd:maxLatInd,maxLonInd:minLonInd);
+    
+%     DEM_FGIF_filt = DEM_filt(maxDemLatInd:minDemLatInd,maxDemLonInd:minDemLonInd,:);
+%     TRI_FGIF_filt = TRI_filt(maxTriLatInd:minTriLatInd,maxTriLonInd:minTriLonInd,:);
+%     LC_FGIF_filt = LC_filt(maxLcLatInd:minLcLatInd,maxLcLonInd:minLcLonInd,:);
+
+    figure(5)
+    hold on
+    surf(Xq_FGIF,Yq_FGIF,DEM_FGIF_filt);
+    title('DEM - FGIF')
+    xlabel('Longitude')
+    ylabel('Latitude')
+    hold off
+    figure(6)
+    hold on
+    surf(Xq_FGIF,Yq_FGIF,TRI_FGIF_filt);
+    title('TRI - FGIF')
+    xlabel('Longitude')
+    ylabel('Latitude')
+    hold off
+    figure(7)
+    hold on
+    surf(Xq_FGIF,Yq_FGIF,LC_FGIF_filt);
+    title('LC - FGIF')
+    xlabel('Longitude')
+    ylabel('Latitude')
+    hold off
+    
+    [m_N,n_N,p_N] = size(N_FGIF_filt)
+    [m_check,n_check] = size(DEM_FGIF_filt)
+        
+    if m_check ~= m_N || n_check ~= n_N
+        disp('WARN: FGIF exceeds domain of of LC, TRI, or DEM data.');
+        disp('Skipping LZ Strip determination.');
+    else
+        master_matrix = cat(6,N_FGIF_filt(:,:,1),DEM_FGIF_filt,TRI_FGIF_filt,LC_FGIF_filt,Xq_FGIF,Yq_FGIF);
+        LZ_Calculation_FGIF(master_matrix, x_earth, y_earth, deg2met);
+    end

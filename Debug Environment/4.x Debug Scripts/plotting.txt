@@ -1,0 +1,20 @@
+clear lats longs
+figure(1)
+plot(N_new(:,:,2),N_new(:,:,3),'g.')
+hold on
+%plot(FGIF(:,1),FGIF(:,2),'.b')
+for i = 1:length(SRM(:,1))
+lats(i) = N_new(SRM(i,1),SRM(i,2),2);
+longs(i) = N_new(SRM(i,1),SRM(i,2),3);
+end
+longs = longs';
+lats = lats';
+plot(lats(:,1),longs(:,1),'rx')
+
+
+SF = 0.003
+for i=1:numel(N_new(:,:,1))
+
+	case = 0
+	
+	if 

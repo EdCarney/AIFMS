@@ -1,0 +1,37 @@
+File name			Category			Description
+=========			========			===========
+test_ellipse_fit_small.m	main program
+
+get_pixelcore_fit_ellipses.m	ellipse fitting			fit ellipses to a single complex-shaped region
+grow_ellipse.m			ellipse fitting			form ellipses from endpoints of a branch (of a skeletonized image) and tune
+
+find_contiguous_areas.m*	morphological*
+find_perimeter.m**		morphological**
+find_nodes.m**			morphological**			find intersection points in a pixel-wide skeletonized image
+thin_bin_img.m**		morphological**			perform morphological thinning of a binary image
+
+decode_data.m			data processing			decompress pixel data from a file
+extract_local_data.m		data processing			extract pixel data of a local region from a larger one
+
+ellipse.m			ellipse properties		displays an ellipse, given its parameters a,b,h,k,t
+ellipse_abhkt_to_endpts.m	ellipse properties		calculates ellipse endpoints from a,b,h,k,t
+ellipse_flip_a_b_theta.m	ellipse properties		flips semi-major and semi-minor axes and recalculates other ellipse parameters, if a<b
+
+detect_encroaching_pts.m	image processing utility	determines whether 2 point clouds intersect
+display_pixel_array.m		image processing utility	display an 2D array of pixels
+find_oob_areas.m		image processing utility	
+generate_ellipse_pixels.m	image processing utility	get all integer points on an ellipse given 2 endpoints of form [y x], and the semi-minor axis
+generate_line_pixels.m		image processing utility	get all integer points on a line given 2 endpoints of form [y x]
+get_closest_pts.m		image processing utility	finds the <numpts> closest points within <list_of_pts> to <curr_locn>
+img_cleanup.m			image processing utility	removes spurs from the image, smoothing it
+img_thresh.m			image processing utility	performs thresholding of an image
+is_ellipse_inside_ellipse.m	image processing utility
+is_pt_inside_ellipse.m		image processing utility
+
+bin_rle_thrsh_7_tile_*.mat	data				compressed binary pixel data
+output_1.fig			data				sample output
+
+Notes
+=====
+* possibly replace with call to regionprops() if performance improved
+**possibly replace with call to bwmorph() if performance improved
