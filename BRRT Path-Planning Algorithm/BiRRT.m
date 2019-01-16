@@ -1,4 +1,4 @@
-function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, delta, numIterations, badAreas, minAngle, heading)
+function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, delta, numIterations, badAreas, minAngle, heading, landOrCrash)
 %BIRRT Builds a path between the LzStrip and UAV using a Bi-directional
 %Rapidly Exploring Random Tree algorithm.
 %	Original Author:
@@ -6,11 +6,11 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
 %       Systems Engineer, Orbit Logic Inc.
 %       Graduate Student, Aerospace Engineering, University of Maryland
 %   Creation Date:
-%       20 Oct 2018
+%       19 Oct 2018
 %   Last Modified By:
 %       Edward Carney
 %   Last Modification Date:
-%       28 Nov 2018
+%       16 Jan 2019
 %
 %   Takes seven arguments:
 %       LandingStrip: the desired landing strip input as a LandingStrip
@@ -34,6 +34,11 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
 %         longer runtimes).
 %       heading: the current heading of the UAV assumed to be measured in
 %         degrees clockwise from north; must be between 0 and 360.
+%       landOrCrash: a boolean value that indicates whether the BRRT algo
+%         should plan for a landing zone approach (i.e. with final heading
+%         constraints) or a crash zone appraoch (i.e. without final heading
+%         constraints). A value of 1 corresponds to landing; 0 corresponds
+%         to crashing.
 %   Outputs two parameters:
 %       Waypoints: an n x 1 vector of Waypoint objects, where n is the
 %         number of waypoints between the UAV position and LZ strip
@@ -92,23 +97,28 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     
     freespace = [minFreespaceE, maxFreespaceE; minFreespaceN, maxFreespaceN];
     
-    % Add LZ sides as bad areas; include a buffer of half the LZ
-    maxLat = max(LandingStrip.LonLat(:,2));
-    minLat = min(LandingStrip.LonLat(:,2));
-    maxLon = max(LandingStrip.LonLat(:,1));
-    minLon = min(LandingStrip.LonLat(:,1));
-    if length(unique(LandingStrip.LonLat(:,2))) > length(unique(LandingStrip.LonLat(:,1)))
-        LzLimits1 = [minLon * -1, minLat; minLon * -1, maxLat];
-        LzLimits2 = [maxLon * -1, minLat; maxLon * -1, maxLat];
-    else
-        LzLimits1 = [minLon * -1, minLat; maxLon * -1, minLat];
-        LzLimits2 = [minLon * -1, maxLat; maxLon * -1, maxLat];
-    end
+    % Add LZ sides as bad areas; include a buffer of half the LZ; only add
+    % these constraints if the UAV is attempting to land.
+    
     maxBadAreaInd = length(badAreas);
-    badAreas{maxBadAreaInd + 1} = LzLimits1;
-    maxBadAreaInd = maxBadAreaInd + 1;
-    badAreas{maxBadAreaInd + 1} = LzLimits2;
-    maxBadAreaInd = maxBadAreaInd + 1;
+    
+    if landOrCrash
+        maxLat = max(LandingStrip.LonLat(:,2));
+        minLat = min(LandingStrip.LonLat(:,2));
+        maxLon = max(LandingStrip.LonLat(:,1));
+        minLon = min(LandingStrip.LonLat(:,1));
+        if length(unique(LandingStrip.LonLat(:,2))) > length(unique(LandingStrip.LonLat(:,1)))
+            LzLimits1 = [minLon * -1, minLat; minLon * -1, maxLat];
+            LzLimits2 = [maxLon * -1, minLat; maxLon * -1, maxLat];
+        else
+            LzLimits1 = [minLon * -1, minLat; maxLon * -1, minLat];
+            LzLimits2 = [minLon * -1, maxLat; maxLon * -1, maxLat];
+        end
+        badAreas{maxBadAreaInd + 1} = LzLimits1;
+        maxBadAreaInd = maxBadAreaInd + 1;
+        badAreas{maxBadAreaInd + 1} = LzLimits2;
+        maxBadAreaInd = maxBadAreaInd + 1;
+    end
     
     % Add heading limitations as bad areas; assuming heading is given as
     % azimuth angle measured clockwise from north
@@ -661,42 +671,61 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
             newWaypoints = [newWaypoints finalStopBranch.waypoints(j)];
         end
 
-        % Perform a simple one-time pruning on the selected points
-        if length(newWaypoints) > 4
+        initialLen = length(newWaypoints);
+        
+        % Perform a simple one-time pruning on the selected points if the
+        % array size warrants it.
+        if initialLen > 4
             reducedWaypoints = [newWaypoints(1)];
-            pointInd = 3;
-            startInd = 1;
-            newStartInd = 1;
-            startNode = newWaypoints(startInd);
-            while pointInd < length(newWaypoints)
-                if startInd == 1
-                    while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
-                            angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
-                            pointInd < (length(newWaypoints) - 1)
-                            pointInd = pointInd + 1;
+            while true
+                pointInd = 3;
+                startInd = 1;
+                newStartInd = 1;
+                startNode = newWaypoints(startInd);
+                while pointInd < length(newWaypoints)
+                    if startInd == 1
+                        while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
+                                angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                                pointInd < (length(newWaypoints) - 1)
+                                pointInd = pointInd + 1;
+                        end
+                        reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
+                        startInd = pointInd - 1;
+                        pointInd = pointInd + 1;
+                        newStartInd = newStartInd + 1;
+                    else
+                        while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
+                                angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                                angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
+                                pointInd < (length(newWaypoints) - 1)
+                                pointInd = pointInd + 1;
+                        end
+                        reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
+                        startInd = pointInd - 1;
+                        pointInd = pointInd + 1;
+                        newStartInd = newStartInd + 1;
                     end
-                    reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
-                    startInd = pointInd - 1;
-                    pointInd = pointInd + 1;
-                    newStartInd = newStartInd + 1;
-                else
-                    while validPoint(newWaypoints(startInd), newWaypoints(pointInd), badWaypoints) && ...
-                            angleCheck(LineSegment(newWaypoints(pointInd), newWaypoints(pointInd + 1)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
-                            angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(pointInd)), minAngle) &&...
-                            pointInd < (length(newWaypoints) - 1)
-                            pointInd = pointInd + 1;
-                    end
-                    reducedWaypoints = [reducedWaypoints, newWaypoints(pointInd - 1)];
-                    startInd = pointInd - 1;
-                    pointInd = pointInd + 1;
-                    newStartInd = newStartInd + 1;
                 end
-            end
-            if validPoint(newWaypoints(startInd), newWaypoints(end), badWaypoints) && ...
-                            angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(end)), minAngle)
-                reducedWaypoints = [reducedWaypoints, newWaypoints(end)];
-            else
-                reducedWaypoints = [reducedWaypoints, newWaypoints(end - 1), newWaypoints(end)];
+                if validPoint(newWaypoints(startInd), newWaypoints(end), badWaypoints) && ...
+                                angleCheck(LineSegment(reducedWaypoints(newStartInd - 1), reducedWaypoints(newStartInd)), LineSegment(newWaypoints(startInd), newWaypoints(end)), minAngle)
+                    reducedWaypoints = [reducedWaypoints, newWaypoints(end)];
+                else
+                    reducedWaypoints = [reducedWaypoints, newWaypoints(end - 1), newWaypoints(end)];
+                end
+
+                prunedLen = length(reducedWaypoints);
+
+                % Check if any additonal progress has been made (i.e. if more points have been
+                % pruned). If they have, run the new pruned points through the same process again,
+                % until no more points can be removed.
+                if prunedLen < initialLen && prunedLen > 4
+                    initialLen = prunedLen;
+                    newWaypoints = reducedWaypoints;
+                    reducedWaypoints = [reducedWaypoints(1)];
+                else
+                    break
+                end
+                
             end
         end
         
@@ -768,67 +797,9 @@ function [Waypoints, totalDistance] = BiRRT(LandingStrip, currentPosition, alt, 
     text3 = ['UAV Heading: ', num2str(heading), ' deg'];
     text4 = ['Number of Iterations: ', num2str(numIterations)];
     plotText = {text1, text2, text3, text4};
-    text(freespace(1,1) + 50,freespace(2,1) + 400,plotText)
+    text(double(freespace(1,1) + 50),double(freespace(2,1) + 400),plotText)
     hold off
-    
-    
-    % Plot new full path.
-    figure(3)
-    eastPlot = [];
-    northPlot = [];
-    for j = 1:length(newWaypoints)
-        eastPlot = [eastPlot newWaypoints(j).east];
-        northPlot = [northPlot newWaypoints(j).north];
-    end
-    plot(eastPlot, northPlot, '--xk')
-    hold on
-    for i = 1:length(badWaypoints)
-        badAreaBoundary = [];
-        badWaypointSet = badWaypoints{i};
-        for j = 1:length(badWaypointSet)
-            badAreaBoundary = [badAreaBoundary; badWaypointSet(j).east, badWaypointSet(j).north];
-        end
-        if i ~= length(badWaypoints)
-            badAreaBoundary = [badAreaBoundary; badWaypointSet(1).east, badWaypointSet(1).north];
-        end
-        plot(badAreaBoundary(:,1), badAreaBoundary(:,2), '--r')
-    end
-    plot(startPoint.east, startPoint.north, '^b');
-    plot(stopPoint.east, stopPoint.north, 'xg');
-    xlabel('East (m)')
-    ylabel('North (m)')
-    title('Final Waypoint Path NED Plot')
-    % Set axes to be equivalent length to preserve visual ratio
-    axesDeltaE = abs(freespace(1,1) - freespace(1,2));
-    axesDeltaN = abs(freespace(2,1) - freespace(2,2));
-    axesDelta = abs(axesDeltaE - axesDeltaN) * 0.5;
-    if axesDeltaE > axesDeltaN
-        freespace(2,2) = freespace(2,2) + axesDelta;
-        freespace(1,2) = freespace(1,2) - axesDelta;
-    elseif axesDeltaN > axesDeltaE
-        freespace(1,2) = freespace(1,2) + axesDelta;
-        freespace(1,1) = freespace(1,1) - axesDelta;
-    end
-    axis([freespace(1,1) freespace(1,2) freespace(2,1) freespace(2,2)])
-    
-    h = zeros(4, 1);
-    h(1) = plot(NaN,NaN,'--xk');
-    h(2) = plot(NaN,NaN,'--r');
-    h(3) = plot(NaN,NaN,'^b');
-    h(4) = plot(NaN,NaN,'xg');
-    legend(h, 'Planned Path','Restricted Regions','UAV Current Position','Landing Strip Center', 'Location', 'best');
-    
-    % Plot informational text
-    text1 = ['Delta Distance: ', num2str(delta), ' m'];
-    text2 = ['Minimum Turn Angle: ', num2str(minAngle), ' deg'];
-    text3 = ['UAV Heading: ', num2str(heading), ' deg'];
-    text4 = ['Number of Iterations: ', num2str(numIterations)];
-    plotText = {text1, text2, text3, text4};
-    text(freespace(1,1) + 50,freespace(2,1) + 400,plotText)
-    hold off
-    
-    Waypoints = newWaypoints;
-    
+        
     % Revert all longitudes
     for i = 1:length(Waypoints)
         Waypoints(i).lon = Waypoints(i).lon * -1;

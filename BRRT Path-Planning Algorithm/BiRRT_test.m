@@ -61,9 +61,10 @@ badArea3 = [
 alt = 250;
 delta = 250;
 numIterations = 5;
-minAngle = 145;
+minAngle = 110;
 heading = 200.0;
 
 tic()
-[Waypoints, totalDistance] = BiRRT(Strip, currentPosition, alt, delta, numIterations, {badArea1 badArea2 badArea3}, minAngle, heading)
+[Waypoints, totalDistance] = BiRRT(Strip, currentPosition, alt, delta, ...
+    numIterations, {badArea1 badArea2 badArea3}, minAngle, heading, 0)
 toc()
